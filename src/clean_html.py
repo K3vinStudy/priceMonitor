@@ -10,7 +10,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 # Global debug switch for comment parsing/cleaning.
-DEBUG_CLEAN_HTML = True
+DEBUG_CLEAN_HTML = False
+# DEBUG_CLEAN_HTML = True
 
 def set_debug_clean_html(enabled: bool = True) -> None:
     """Enable/disable debug prints inside clean_html parsing functions."""
