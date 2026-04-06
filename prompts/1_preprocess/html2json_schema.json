@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DCD_Thread_JSON",
+  "type": "object",
+  "required": ["source_url", "meta", "series", "post", "comments"],
+  "additionalProperties": false,
+  "properties": {
+    "source_url": {
+      "type": "string",
+      "description": "帖子页面URL（必须为当前解析页面URL）"
+    },
+    "meta": {
+      "type": "object",
+      "required": ["fetched_at", "timezone"],
+      "additionalProperties": false,
+      "properties": {
+        "fetched_at": {
+          "type": "string",
+          "description": "抓取时间（ISO8601，带时区偏移），用于推断相对时间。例：2026-04-06T19:22:56+08:00"
+        },
+        "timezone": {
+          "type": "string",
+          "description": "时区，例：Asia/Shanghai"
+        }
+      }
+    },
+    "series": {
+      "type": "string",
+      "description": "车系名称（来自页面 series-card）"
+    },
+    "post": {
+      "type": "object",
+      "required": ["title", "published_at", "author", "is_op", "content_lines"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "published_at": {
+          "type": "string",
+          "description": "主贴发布时间，已归一化为绝对日期/时间：YYYY-MM-DD 或 YYYY-MM-DD HH:MM"
+        },
+        "author": { "type": "string" },
+        "is_op": {
+          "type": "integer",
+          "enum": [0, 1],
+          "description": "主贴作者一定为 1"
+        },
+        "content_lines": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "主贴正文，按自然换行拆分为列表，保留纯文本"
+        }
+      }
+    },
+    "comments": {
+      "type": "array",
+      "description": "楼层列表（两层结构：楼层 + replies）",
+      "items": {
+        "type": "object",
+        "required": ["published_at", "author", "is_op", "content_lines", "replies"],
+        "additionalProperties": false,
+        "properties": {
+          "published_at": {
+            "type": "string",
+            "description": "楼层发布时间，已归一化为绝对日期/时间：YYYY-MM-DD 或 YYYY-MM-DD HH:MM"
+          },
+          "author": { "type": "string" },
+          "is_op": {
+            "type": "integer",
+            "enum": [0, 1],
+            "description": "楼层是否为楼主发言（依据“楼主/作者”徽章或作者名匹配）"
+          },
+          "content_lines": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "楼层正文，按自然换行拆分为列表，保留纯文本"
+          },
+          "replies": {
+            "type": "array",
+            "description": "该楼层下的所有回复（只保留一层；回复的回复也放在这里，通过 reply_to 指向被回复对象）",
+            "items": {
+              "type": "object",
+              "required": ["published_at", "author", "is_op", "content_lines", "reply_to"],
+              "additionalProperties": false,
+              "properties": {
+                "published_at": {
+                  "type": "string",
+                  "description": "回复发布时间，已归一化为绝对日期/时间：YYYY-MM-DD 或 YYYY-MM-DD HH:MM"
+                },
+                "author": { "type": "string" },
+                "is_op": {
+                  "type": "integer",
+                  "enum": [0, 1]
+                },
+                "content_lines": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "回复正文，按自然换行拆分为列表，保留纯文本（不要把引用块混进 content_lines）"
+                },
+                "reply_to": {
+                  "description": "如果是回复某条回复，则给出被回复对象的 author_id + content；否则为 'none'",
+                  "oneOf": [
+                    { "type": "string", "enum": ["none"] },
+                    {
+                      "type": "object",
+                      "required": ["author_id", "content"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "author_id": {
+                          "type": "string",
+                          "description": "引用块里的 @用户xxx / 昵称（优先用户ID形式）"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "引用块中的被回复内容纯文本"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
