@@ -50,7 +50,7 @@ def call_qwen(api_key: str, system: str, user: str):
     try:
         response = Generation.call(
             # 可选模型：qwen-max, qwen-plus, qwen-turbo, qwen-long 等
-            model='qwen-plus',
+            model='qwen-plus-2025-07-28',
             messages=messages,
             result_format='message'
         )
