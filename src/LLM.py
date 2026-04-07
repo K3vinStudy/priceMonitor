@@ -1,4 +1,3 @@
-# 作者：郑凯峰
 # 功能：控制LLM的选择和调用
 
 _PROMPTS_ENV = None
@@ -6,17 +5,14 @@ _PROMPTS_ENV = None
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
-from dashscope import Generation
+from dashscope import Generation, MultiModalConversation
 from openai import OpenAI
 from pathlib import Path
-from jinja2 import Template, Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader
 
-import os
-import json
 import dashscope
 
 import config
-
 
 # 获取变量全局缓存（env.py）
 def get_prompts_env():
@@ -49,15 +45,22 @@ def call_qwen(api_key: str, system: str, user: str):
         {'role': 'system', 'content': system},
         {'role': 'user', 'content': user}
     ]
+    
     print("访问API...")
-
     try:
         response = Generation.call(
             # 可选模型：qwen-max, qwen-plus, qwen-turbo, qwen-long 等
-            model='qwen3.6-plus',
+            model='qwen-plus',
             messages=messages,
             result_format='message'
         )
+        
+        # 调用多模态模型需要特殊的函数
+        # response = MultiModalConversation.call(
+        #     model='qwen3.6-plus',
+        #     messages=messages,
+        #     result_format='message'
+        # )
 
         if response.status_code == 200:
             # print("回答:")
@@ -103,8 +106,8 @@ def html2json(gid: str, htmls: list) -> str:
         return -1
     
     url = config._ENV_CACHE["PAGE_BASE_URL"] + gid
-    llm_type = config._ENV_CACHE["llm_type"]
-    api_key = config._ENV_CACHE["api_key"]
+    llm_type = config._ENV_CACHE["LLM_TYPE"]
+    api_key = config._ENV_CACHE["API_KEY"]
     fetched_at = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds")
 
     if not api_key:
@@ -125,14 +128,13 @@ def html2json(gid: str, htmls: list) -> str:
         html_text=htmls
     )
 
-    print("正在处理html " + url)
-    print("提示词：")
-    print(user)
+    print(f"正在处理html{url}")
+    print(f"提示词：{user}")
     
     resp = call_LLM(
         llm_type,
-        api_key, 
-        system, 
+        api_key,
+        system,
         user
     )
     return resp
@@ -144,27 +146,65 @@ def merge_json(jsons: list) -> str:
 
 
 # 功能：从帖子的json文件提取报价数据记录
-def json2data(thread: str, llm_type: int, api_key: str):
-    if thread is None:
+def json2data(gid: str, thread_json: str) -> str:
+    if thread_json is None:
         return -1
+    
+    # url = config._ENV_CACHE["PAGE_BASE_URL"] + gid
+    llm_type = config._ENV_CACHE["LLM_TYPE"]
+    api_key = config._ENV_CACHE["API_KEY"]
+    # fetched_at = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds")
 
-    system = (
-        "你将收到一个论坛 thread 的结构化 JSON（thread/authors/nodes）。"
-        "你的唯一任务是“结构还原”，即按 nodes 中的 id 与 parent_id 重建回复树，并输出可读的层级结构。"
-        "\n\n约束："
-        "\n1) 仅使用 JSON 中出现的节点与字段。不要推测或补全缺失节点、缺失作者信息。"
-        "\n2) parent_id 表示回复关系：parent_id=null 的节点为根（通常是主楼）；其他节点挂到对应 parent_id 之下。"
-        "\n3) authors 字典用于将 author_id 映射为 display_name；若不存在映射，显示为“unknown(author_id=...)”。"
-        "\n4) quotes（若存在）只是引用，不是新节点，不得作为树节点输出。"
-        "\n5) 若某节点的 parent_id 在本次输入中找不到，把它列入“Unresolved nodes”区，保留原 parent_id，不要猜测。"
-        "\n6) 输出时必须保留每个节点的 id，方便回溯。"
+    if not api_key:
+        api_key = config.get_env()["api_key"]
+    
+    # 将 schema 文本注入 system prompt
+    # schema_text = render_prompt(
+    #     "2_extract/json2data_schema.json"
+    # )
+    system = render_prompt(
+        "2_extract/json2data_system.j2",
+        # schema_text=schema_text
     )
-    user = thread
+    user = render_prompt(
+        "2_extract/json2data_user.j2", 
+        thread_json=thread_json
+    )
 
-    resp = call_LLM(llm_type, api_key, system, user)
+    print(f"正在处理json:{gid}")
+    # print(f"提示词：{user}")
+    
+    resp = call_LLM(
+        llm_type,
+        api_key,
+        system,
+        user
+    )
+
+    # text = _extract_text_from_llm_resp(resp)
+    # Debug print (optional): keep it concise
+    # print(resp[:500])
     return resp
 
 
-schema_text = render_prompt("1_preprocess/url2json_schema.json")
-system = render_prompt("1_preprocess/url2json_system.j2", schema_text=schema_text)
-print(system)
+
+
+
+
+
+if __name__ == "__main__":
+    config.get_env_cache()
+    
+    gid = "1858457796005892"
+    in_path = Path("data/json/1_preprocess") / f"{gid}.json"
+    out_path = Path("data/json/2_extract") / f"{gid}.json"
+    
+    with open(in_path, "r", encoding="utf-8") as f:
+        json_preprocess = f.read()
+    
+    json_extract = json2data(gid, json_preprocess)
+    
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(json_extract)
+
+    print("saved:", out_path)

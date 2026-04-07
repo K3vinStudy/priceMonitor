@@ -1,8 +1,14 @@
-from pathlib import Path
 import sqlite3
+
+import sys
+from pathlib import Path
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 import config
 
+config.get_env_cache()
 DATA_DIR = config._ENV_CACHE["DATA_DIR"]
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -17,3 +23,6 @@ def get_connection():
 # 简单版
 # def get_connection():
 #     return sqlite3.connect(DB_PATH)
+
+if __name__ == "__main__":
+    print(get_connection())

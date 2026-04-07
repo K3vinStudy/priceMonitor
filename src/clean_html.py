@@ -125,10 +125,47 @@ def extract_post_strict(raw_html: str):
     return title2.strip(), lines
 
 def extract_published_at(raw_html: str) -> str:
-    """Return the raw published time text (may be absolute or relative, e.g. '前天 09:34')."""
-    # Match strings like "2025-10-12发布于" or "前天 09:34发布于" or "昨天 12:01发布于"
-    m = re.search(r"(\d{4}-\d{2}-\d{2}|今天\s*\d{2}:\d{2}|昨天\s*\d{2}:\d{2}|前天\s*\d{2}:\d{2}|\d+天前\s*\d{2}:\d{2}|\d{2}-\d{2})\s*发布于", raw_html)
-    return m.group(1) if m else ""
+    """Return the raw published time text for the *post* (NOT comments).
+
+    DCD pages have multiple variants, for example:
+      - "2025-10-12发布于" / "2025-10-12 发布于"
+      - "前天 09:34发布于" / "6天前发布于"
+      - "03-06发布" / "03-06 发布" (often without the character "于")
+
+    We return only the time token part (e.g. "2025-10-12", "前天 09:34", "03-06").
+    """
+    # 1) Most common: token + '发布于'
+    m = re.search(
+        r"(\d{4}-\d{2}-\d{2}|今天\s*\d{2}:\d{2}|昨天\s*\d{2}:\d{2}|前天\s*\d{2}:\d{2}|\d+天前(?:\s*\d{2}:\d{2})?|\d{2}-\d{2}(?:\s*\d{2}:\d{2})?)\s*发布于",
+        raw_html,
+    )
+    if m:
+        return m.group(1).strip()
+
+    # 2) Another common: token + '发布' (NO '于'), usually for the main post header
+    #    e.g. '<span>03-06发布</span>' or '2025-10-12发布' or '4天前发布'
+    m2 = re.search(
+        r"(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}|今天\s*\d{2}:\d{2}|昨天\s*\d{2}:\d{2}|前天\s*\d{2}:\d{2}|\d+天前(?:\s*\d{2}:\d{2})?)\s*发布(?!于)",
+        raw_html,
+    )
+    if m2:
+        # Re-capture with a wider group to include optional HH:MM when present.
+        m2b = re.search(
+            r"((?:\d{4}-\d{2}-\d{2}|\d{2}-\d{2}|今天|昨天|前天|\d+天前)(?:\s*\d{2}:\d{2})?)\s*发布(?!于)",
+            raw_html,
+        )
+        return (m2b.group(1) if m2b else m2.group(1)).strip()
+
+    # 3) Last resort: look for '发布时间' style labels in embedded JSON / text
+    #    Keep this permissive but still anchored to '发布'
+    m3 = re.search(
+        r"发布\s*时间\s*[:：]\s*(\d{4}-\d{2}-\d{2}(?:\s*\d{2}:\d{2})?|\d{2}-\d{2}(?:\s*\d{2}:\d{2})?|今天\s*\d{2}:\d{2}|昨天\s*\d{2}:\d{2}|前天\s*\d{2}:\d{2}|\d+天前(?:\s*\d{2}:\d{2})?)",
+        raw_html,
+    )
+    if m3:
+        return m3.group(1).strip()
+
+    return ""
 
 def extract_series(raw_html: str) -> str:
     soup = BeautifulSoup(raw_html, "lxml")
@@ -279,12 +316,12 @@ def extract_comments_strict(
 
     def _extract_date(li_text: str, kind: str) -> str:
         # kind in ("评论发表于", "回复发表于")
-        pat = kind + r"\s*([0-9]{4}-[0-9]{2}-[0-9]{2}(?:\s*[0-9]{2}:[0-9]{2})?|今天\s*[0-9]{2}:[0-9]{2}|昨天\s*[0-9]{2}:[0-9]{2}|前天\s*[0-9]{2}:[0-9]{2}|[0-9]+天前\s*[0-9]{2}:[0-9]{2}|[0-9]{2}-[0-9]{2}(?:\s*[0-9]{2}:[0-9]{2})?)"
+        pat = kind + r"\s*([0-9]{4}-[0-9]{2}-[0-9]{2}(?:\s*[0-9]{2}:[0-9]{2})?|今天\s*[0-9]{2}:[0-9]{2}|昨天\s*[0-9]{2}:[0-9]{2}|前天\s*[0-9]{2}:[0-9]{2}|[0-9]+天前(?:\s*[0-9]{2}:[0-9]{2})?|[0-9]{2}-[0-9]{2}(?:\s*[0-9]{2}:[0-9]{2})?)"
         m = re.search(pat, li_text)
         if m:
             return m.group(1)
         # Fallback: first date-like token anywhere in the text
-        m2 = re.search(r"([0-9]{4}-[0-9]{2}-[0-9]{2}(?:\s*[0-9]{2}:[0-9]{2})?|今天\s*[0-9]{2}:[0-9]{2}|昨天\s*[0-9]{2}:[0-9]{2}|前天\s*[0-9]{2}:[0-9]{2}|[0-9]+天前\s*[0-9]{2}:[0-9]{2}|[0-9]{2}-[0-9]{2}(?:\s*[0-9]{2}:[0-9]{2})?)", li_text)
+        m2 = re.search(r"([0-9]{4}-[0-9]{2}-[0-9]{2}(?:\s*[0-9]{2}:[0-9]{2})?|今天\s*[0-9]{2}:[0-9]{2}|昨天\s*[0-9]{2}:[0-9]{2}|前天\s*[0-9]{2}:[0-9]{2}|[0-9]+天前(?:\s*[0-9]{2}:[0-9]{2})?|[0-9]{2}-[0-9]{2}(?:\s*[0-9]{2}:[0-9]{2})?)", li_text)
         return m2.group(1) if m2 else ""
     
     def _parse_fetched_at() -> datetime | None:

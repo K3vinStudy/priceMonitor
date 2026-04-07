@@ -1,37 +1,33 @@
-# 作者：郑凯峰
-
 from database.init_db import init_db
 from database.op import (
-    create_project,
-    get_project_by_id,
-    get_all_projects,
-    update_project,
-    delete_project,
+    insert_price_record,
+    insert_price_records,
+    get_price_record_by_ruid,
+    list_price_records,
+    query_price_records,
+    delete_price_record_by_ruid,
+    delete_price_records_by_gid,
+    count_price_records,
 )
 init_db()
 print("数据库已就绪")
 
+from extract_data import data2list
 from get_data import get_gids
 from get_json import gid2json
-# from LLM import url2json
 import config
-import extract_data
 
 def main():
     config.get_env_cache()
     gids = set()
-    gids = get_gids()
-    # results = [save_html_with_gid(x) for x in gids]
-    # for x in gids:
-    #     save_html_with_gid(x)
-    # print(results)
+    gids = get_gids(20)
+
     for gid in gids:
-        # json = url2json("https://www.dongchedi.com/ugc/article/" + gid)
         gid2json(gid)
-        # print()
-        # print("###### GID: " + gid + " ######")
-        # print()
-        # print(json)
+        list = data2list(gid)
+        insert_price_records(list)
+        
+
         
         
         

@@ -1,4 +1,3 @@
-# 作者：郑凯峰
 # 功能：读取环境变量等，生成全局变量
 
 from pathlib import Path
@@ -35,7 +34,7 @@ def load_env():
     api_key = load_api_key(llm)
     data_dir = Path.cwd() / "data"
     base_url = "https://www.dongchedi.com/motor/pc/ugc/community/topic_list?aid=1839&app_name=auto_web_pc&topic_id=92642&type=all&limit=30&sort_type=2&last_id="
-    first_url = "https://www.dongchedi.com/motor/pc/ugc/community/topic_list?aid=1839&app_name=auto_web_pc&topic_id=92642&type=all&limit=1&sort_type=2"
+    first_url = "https://www.dongchedi.com/motor/pc/ugc/community/topic_list?aid=1839&app_name=auto_web_pc&topic_id=92642&type=all&limit=30&sort_type=2"
     page_base_url = "https://www.dongchedi.com/ugc/article/"
 
     return {

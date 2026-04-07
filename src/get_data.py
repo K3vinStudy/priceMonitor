@@ -4,30 +4,26 @@
 # 输出：
 
 from time import sleep
-from get_resp import get_json
 from bs4 import BeautifulSoup as bs
 from playwright.sync_api import sync_playwright
-
 import re
 
+from get_resp import get_json
 import config
 
 def get_gids(rounds = 1) -> list:
     # rounds = 2      # 爬取轮数(每轮30条)
     base_url = config._ENV_CACHE["BASE_URL"]
     
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-    
+    # headers = {
+    #     "User-Agent": "Mozilla/5.0"
+    # }
     # resp = requests.get(url, timeout=10).json()
-    
     # print("status:", resp.status_code)
     # print("headers:", resp.headers)
     # print("text:", resp.text)        # 返回的原始文本内容
     # print(resp["data"]["topic_list"][0]["gid"])
     
-    gids = []
     seen = set()
     url = config._ENV_CACHE["FIRST_URL"]
     count = 0
@@ -61,10 +57,8 @@ def get_gids(rounds = 1) -> list:
         
         sleep(2)
         
-        
     # print(seen)
     # save_html_with_gid(seen)
-    
     
     return seen
 
@@ -212,19 +206,9 @@ def fetch_rendered_html(url: str, max_pages: int = 50) -> list[str]:
             raise RuntimeError(f"页面没有正常渲染，原始报错：{e}") from e
 
 
-# def gid2json(gids: list):
-#     html_list = set()
-#     for gid in gids:
-#         html = get_html_with_gid(gid)
-#         html_list.add(html)
-        
-#     return 0
 
 
-# def get_html(gid: str):
-#     url = config._ENV_CACHE["PAGE_BASE_URL"] + gid
-#     json = url2json(url)
-#     return 0
-
-
-# fetch_text()
+if __name__ == "__main__":
+    gids = get_gids
+    print(gids)
+    
