@@ -9,8 +9,8 @@ ENV_FILE = Path.cwd() / ".env"
 
 DEFAULT_ENV = {
     "LLM": "1",
-    "MODEL_QWEN": "qwen3.5-plus",
-    "MODEL_GPT": "gpt-5.2",
+    "QWEN_MODEL": "qwen-long",
+    "GPT_MODEL": "gpt-5.2",
     "Qwen_API_KEY": "",
     "GPT_API_KEY": "",
     "DATA_DIR": "data",
@@ -65,9 +65,9 @@ def load_api_key(LLM):
 def load_model_type(LLM):
     match LLM:
         case 1:
-            model_type = os.getenv('MODEL_QWEN')
+            model_type = os.getenv('QWEN_MODEL', DEFAULT_ENV['QWEN_MODEL'])
         case 2:
-            model_type = os.getenv('MODEL_GPT')
+            model_type = os.getenv('GPT_MODEL', DEFAULT_ENV['GPT_MODEL'])
         case _:
             raise Exception("Unsupported LLM. Please check LLM.py.")
     

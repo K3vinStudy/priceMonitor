@@ -10,37 +10,45 @@ from LLM import json2data
 
 import config
 
-def json_to_data(gid: str):
+def json_to_data(gid: str, should_stop=None):
+    if should_stop and should_stop():
+        return None
+
     in_path = Path("data/json/1_preprocess") / f"{gid}.json"
     out_path = Path("data/json/2_extract") / f"{gid}.json"
     used_path = Path("data/json/3_used_pre") / f"{gid}.json"
-    
-    # if(out_path.exists() and used_path.exists()):
-    #     in_txt = in_path.read_text(encoding="utf-8")
-    #     used_txt = used_path.read_text(encoding="utf-8")
-        
-    #     print(f"gid {gid} 已有数据无需更新：{in_txt == used_txt}")    # 是否相等
-    #     if(in_txt == used_txt):
-    #         in_path.unlink()
-    #         return 1
-    #     else:
-    #         used_path.unlink()
-    if(used_path.exists()):
+
+    if used_path.exists():
         used_path.unlink()
-    
+
+    if should_stop and should_stop():
+        return None
+
     with open(in_path, "r", encoding="utf-8") as f:
         json_preprocess = f.read()
-    
-    data_json = json2data(gid, json_preprocess)
+
+    if should_stop and should_stop():
+        return None
+
+    data_json = json2data(gid, json_preprocess, should_stop=should_stop)
+
+    if should_stop and should_stop():
+        return None
+    if not data_json or data_json == "{}":
+        return None
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(data_json)
 
     print("saved:", out_path)
-    
+
+    if should_stop and should_stop():
+        return None
+
     used_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(in_path), str(used_path))
-    
+
     return 0
 
 
@@ -78,15 +86,21 @@ def json2list(gid: str) -> list:
     return result
 
 
-def data2list(gid: str) -> list:
+def data2list(gid: str, should_stop=None) -> list:
     config.get_env_cache()
-    
-    json_to_data(gid)
-    
-    list = json2list(gid)
-    return list
-    
-    
+
+    if should_stop and should_stop():
+        return []
+
+    ret = json_to_data(gid, should_stop=should_stop)
+    if ret is None:
+        return []
+
+    if should_stop and should_stop():
+        return []
+
+    result = json2list(gid)
+    return result
     
     
     

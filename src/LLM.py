@@ -43,9 +43,13 @@ def render_prompt(relpath: str, **kwargs) -> str:
 
 
 # 功能：调用千问
-def call_qwen(api_key: str, system: str, user: str):
+def call_qwen(api_key: str, system: str, user: str, should_stop=None):
+    if should_stop and should_stop():
+        return "{}"
+
     dashscope.api_key = api_key
-    model = config._ENV_CACHE['MODEL_TYPE']
+    env = config.get_env_cache()
+    model = env['MODEL_TYPE']
     messages = [
         {'role': 'system', 'content': system},
         {'role': 'user', 'content': user}
@@ -56,21 +60,19 @@ def call_qwen(api_key: str, system: str, user: str):
     logger = logging.getLogger(__name__)
 
     def _do_call():
-        # return Generation.call(
-        #     # 可选模型：qwen-max, qwen-plus, qwen-turbo, qwen-long 等
+        # return MultiModalConversation.call(
         #     model=model,
         #     messages=messages,
         #     result_format='message'
         # )
         
-        # 调用多模态模型需要特殊的函数
-        return MultiModalConversation.call(
+        return Generation.call(
             model=model,
             messages=messages,
-            result_format='message'
-            )
-        
-    def render_content(content:list) -> str:
+            result_format="message",
+        )
+
+    def render_content(content: list) -> str:
         text_parts = []
         for item in content:
             if isinstance(item, dict) and "text" in item:
@@ -80,11 +82,17 @@ def call_qwen(api_key: str, system: str, user: str):
         return "\n".join(text_parts)
 
     for attempt in range(max_retries + 1):
+        if should_stop and should_stop():
+            return "{}"
+
         print(f"访问API... 第 {attempt + 1} 次尝试")
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(_do_call)
         try:
             response = future.result(timeout=timeout_seconds)
+
+            if should_stop and should_stop():
+                return "{}"
 
             if response.status_code == 200:
                 content = response.output.choices[0].message.content
@@ -99,6 +107,8 @@ def call_qwen(api_key: str, system: str, user: str):
         except FuturesTimeoutError as e:
             future.cancel()
             print(f"千问调用超时（>{timeout_seconds}秒）: 第 {attempt + 1} 次尝试失败")
+            if should_stop and should_stop():
+                return "{}"
             if attempt < max_retries:
                 print("准备重试...")
                 continue
@@ -112,6 +122,8 @@ def call_qwen(api_key: str, system: str, user: str):
 
         except Exception as e:
             print(f"发生异常: 第 {attempt + 1} 次尝试失败, {e}")
+            if should_stop and should_stop():
+                return "{}"
             if attempt < max_retries:
                 print("准备重试...")
                 continue
@@ -123,25 +135,36 @@ def call_qwen(api_key: str, system: str, user: str):
 
 
 # 功能：调用ChatGPT
-def call_gpt(api_key: str, instructions: str, input: str):
+def call_gpt(api_key: str, instructions: str, input: str, should_stop=None):
+    if should_stop and should_stop():
+        return "{}"
+
+    env = config.get_env_cache()
+    model = env['MODEL_TYPE']
     client = OpenAI(api_key=api_key)
 
     resp = client.responses.create(
-        model="gpt-5",
+        model=model,
         instructions=instructions,
         input=input
     )
 
-    return resp
+    if should_stop and should_stop():
+        return "{}"
+
+    return resp.output_text if hasattr(resp, 'output_text') else str(resp)
 
 
 # 功能：选择并调用LLM
-def call_LLM(type: int, api_key: str, system: str, user: str):
+def call_LLM(type: int, api_key: str, system: str, user: str, should_stop=None):
+    if should_stop and should_stop():
+        return "{}"
+
     match type:
         case 1:
-            resp = call_qwen(api_key, system, user)
+            resp = call_qwen(api_key, system, user, should_stop=should_stop)
         case 2:
-            resp = call_gpt(api_key, system, user)
+            resp = call_gpt(api_key, system, user, should_stop=should_stop)
         case _:
             raise Exception("不支持的LLM种类")
 
@@ -149,19 +172,18 @@ def call_LLM(type: int, api_key: str, system: str, user: str):
 
 
 # 功能：根据帖子HTML文本提取页面json（目前弃用）
-def html2json(gid: str, htmls: list) -> str:
+def html2json(gid: str, htmls: list, should_stop=None) -> str:
     if htmls is None:
         return -1
-    
-    url = config._ENV_CACHE["PAGE_BASE_URL"] + gid
-    llm_type = config._ENV_CACHE["LLM_TYPE"]
-    api_key = config._ENV_CACHE["API_KEY"]
+    if should_stop and should_stop():
+        return "{}"
+
+    env = config.get_env_cache()
+    url = env["PAGE_BASE_URL"] + gid
+    llm_type = env["LLM_TYPE"]
+    api_key = env["API_KEY"]
     fetched_at = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds")
 
-    if not api_key:
-        api_key = config.get_env()["api_key"]
-    
-    # 将 schema 文本注入 system prompt
     schema_text = render_prompt(
         "1_preprocess/html2json_schema.json"
     )
@@ -170,20 +192,24 @@ def html2json(gid: str, htmls: list) -> str:
         schema_text=schema_text
     )
     user = render_prompt(
-        "1_preprocess/hrmk2json_user.j2", 
-        source_url=url, 
+        "1_preprocess/hrmk2json_user.j2",
+        source_url=url,
         fetched_at=fetched_at,
         html_text=htmls
     )
 
     print(f"正在处理html{url}")
     print(f"提示词：{user}")
-    
+
+    if should_stop and should_stop():
+        return "{}"
+
     resp = call_LLM(
         llm_type,
         api_key,
         system,
-        user
+        user,
+        should_stop=should_stop
     )
     return resp
 
@@ -194,44 +220,37 @@ def merge_json(jsons: list) -> str:
 
 
 # 功能：从帖子的json文件提取报价数据记录
-def json2data(gid: str, thread_json: str) -> str:
+def json2data(gid: str, thread_json: str, should_stop=None) -> str:
     if thread_json is None:
         return -1
-    
-    # url = config._ENV_CACHE["PAGE_BASE_URL"] + gid
-    llm_type = config._ENV_CACHE["LLM_TYPE"]
-    api_key = config._ENV_CACHE["API_KEY"]
-    # fetched_at = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds")
+    if should_stop and should_stop():
+        return "{}"
 
-    if not api_key:
-        api_key = config.get_env()["api_key"]
-    
-    # 将 schema 文本注入 system prompt
-    # schema_text = render_prompt(
-    #     "2_extract/json2data_schema.json"
-    # )
+    env = config.get_env_cache()
+    llm_type = env["LLM_TYPE"]
+    api_key = env["API_KEY"]
+
     system = render_prompt(
         "2_extract/json2data_system.j2",
-        # schema_text=schema_text
     )
     user = render_prompt(
-        "2_extract/json2data_user.j2", 
+        "2_extract/json2data_user.j2",
         thread_json=thread_json
     )
 
     print(f"正在处理json:{gid}")
-    # print(f"提示词：{user}")
-    
+
+    if should_stop and should_stop():
+        return "{}"
+
     resp = call_LLM(
         llm_type,
         api_key,
         system,
-        user
+        user,
+        should_stop=should_stop
     )
 
-    # text = _extract_text_from_llm_resp(resp)
-    # Debug print (optional): keep it concise
-    # print(resp[:500])
     return resp
 
 
@@ -241,7 +260,7 @@ def json2data(gid: str, thread_json: str) -> str:
 
 
 if __name__ == "__main__":
-    config.get_env_cache()
+    config.refresh_env_cache()
     
     gid = "1855068947908617"
     in_path = Path("data/json/1_preprocess") / f"{gid}.json"

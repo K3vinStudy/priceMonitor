@@ -50,7 +50,7 @@ class FetchThread(QThread):
 
 class TaskPage(QWidget):
     QWEN_MODELS = [
-        "qwen-plus-2025-07-28",
+        "qwen-long",
         "qwen-long-latest",
         "qwen3.6-plus",
         "qwen3.5-plus",
@@ -279,8 +279,8 @@ class TaskPage(QWidget):
 
         self.qwen_api_key = env_map.get("Qwen_API_KEY", "")
         self.gpt_api_key = env_map.get("GPT_API_KEY", "")
-        self.qwen_model_name = env_map.get("MODEL_TYPE_QWEN", "qwen3.5-plus")
-        self.gpt_model_name = env_map.get("MODEL_TYPE_GPT", "gpt-5.2")
+        self.qwen_model_name = env_map.get("QWEN_MODEL", "qwen3.5-plus")
+        self.gpt_model_name = env_map.get("GPT_MODEL", "gpt-5.2")
 
         llm_index = self.llm_type_input.findData(llm_type)
         if llm_index >= 0:
@@ -306,8 +306,8 @@ class TaskPage(QWidget):
         env_map["LLM"] = str(current_llm_type)
         env_map["Qwen_API_KEY"] = self.qwen_api_key
         env_map["GPT_API_KEY"] = self.gpt_api_key
-        env_map["MODEL_TYPE_QWEN"] = self.qwen_model_name
-        env_map["MODEL_TYPE_GPT"] = self.gpt_model_name
+        env_map["QWEN_MODEL"] = self.qwen_model_name
+        env_map["GPT_MODEL"] = self.gpt_model_name
         env_map["LLM_WORKERS"] = str(self.llm_workers_input.value())
         env_map["LLM_TIMEOUT_SECONDS"] = str(self.timeout_input.value())
         env_map["DB_BATCH_SIZE"] = str(self.db_batch_size_input.value())

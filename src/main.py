@@ -38,13 +38,17 @@ def setup_app(log=None):
     _log(log, "数据库已就绪")
     
 
-def run_data2list_with_retry(gid, max_retries=1, log=None):
+def run_data2list_with_retry(gid, max_retries=1, log=None, should_stop=None):
     env = config.get_env_cache()
     llm_timeout_seconds = env['LLM_TIMEOUT_SECONDS']
 
     for attempt in range(max_retries + 1):
+        if should_stop and should_stop():
+            _log(log, f"[LLM] gid={gid} 收到停止信号，终止处理")
+            return []
+
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(data2list, gid)
+            future = executor.submit(data2list, gid, should_stop)
             try:
                 records = future.result(timeout=llm_timeout_seconds)
                 return records
@@ -52,6 +56,10 @@ def run_data2list_with_retry(gid, max_retries=1, log=None):
                 _log(log, f"[LLM] gid={gid} 超时（{llm_timeout_seconds}s），attempt={attempt + 1}")
             except Exception as e:
                 _log(log, f"[LLM] gid={gid} 异常，attempt={attempt + 1}，error={e}")
+
+        if should_stop and should_stop():
+            _log(log, f"[LLM] gid={gid} 收到停止信号，终止重试")
+            return []
 
         if attempt < max_retries:
             _log(log, f"[LLM] gid={gid} 准备重试")
@@ -117,7 +125,7 @@ def fetch(rounds: int, log=None, progress=None, should_stop=None):
                 continue
 
             gid2json(gid)
-            future = executor.submit(run_data2list_with_retry, gid, 1, log)
+            future = executor.submit(run_data2list_with_retry, gid, 1, log, should_stop)
             future_to_gid[future] = gid
 
         for future in as_completed(future_to_gid):
