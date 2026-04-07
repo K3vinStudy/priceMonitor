@@ -3,6 +3,7 @@
 _PROMPTS_ENV = None
 
 from datetime import datetime
+import json
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from dashscope import Generation, MultiModalConversation
@@ -44,6 +45,7 @@ def render_prompt(relpath: str, **kwargs) -> str:
 # 功能：调用千问
 def call_qwen(api_key: str, system: str, user: str):
     dashscope.api_key = api_key
+    model = config._ENV_CACHE['MODEL_TYPE']
     messages = [
         {'role': 'system', 'content': system},
         {'role': 'user', 'content': user}
@@ -54,12 +56,28 @@ def call_qwen(api_key: str, system: str, user: str):
     logger = logging.getLogger(__name__)
 
     def _do_call():
-        return Generation.call(
-            # 可选模型：qwen-max, qwen-plus, qwen-turbo, qwen-long 等
-            model='qwen-plus-2025-07-28',
+        # return Generation.call(
+        #     # 可选模型：qwen-max, qwen-plus, qwen-turbo, qwen-long 等
+        #     model=model,
+        #     messages=messages,
+        #     result_format='message'
+        # )
+        
+        # 调用多模态模型需要特殊的函数
+        return MultiModalConversation.call(
+            model=model,
             messages=messages,
             result_format='message'
-        )
+            )
+        
+    def render_content(content:list) -> str:
+        text_parts = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                text_parts.append(item["text"])
+            else:
+                text_parts.append(str(item))
+        return "\n".join(text_parts)
 
     for attempt in range(max_retries + 1):
         print(f"访问API... 第 {attempt + 1} 次尝试")
@@ -68,15 +86,13 @@ def call_qwen(api_key: str, system: str, user: str):
         try:
             response = future.result(timeout=timeout_seconds)
 
-            # 调用多模态模型需要特殊的函数
-            # response = MultiModalConversation.call(
-            #     model='qwen3.6-plus',
-            #     messages=messages,
-            #     result_format='message'
-            # )
-
             if response.status_code == 200:
-                return response.output.choices[0].message.content
+                content = response.output.choices[0].message.content
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    return render_content(content)
+                return str(content)
             else:
                 raise RuntimeError(f"请求失败: {response.code}, 错误信息: {response.message}")
 
@@ -227,7 +243,7 @@ def json2data(gid: str, thread_json: str) -> str:
 if __name__ == "__main__":
     config.get_env_cache()
     
-    gid = "1847314923770883"
+    gid = "1855068947908617"
     in_path = Path("data/json/1_preprocess") / f"{gid}.json"
     out_path = Path("data/json/2_extract") / f"{gid}.json"
     
@@ -238,5 +254,7 @@ if __name__ == "__main__":
     
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(json_extract)
+    # with open(out_path, "w", encoding="utf-8") as f:
+    #     json.dump(json_extract, f, ensure_ascii=False, indent=2)
 
     print("saved:", out_path)
