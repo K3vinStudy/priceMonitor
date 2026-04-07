@@ -15,16 +15,18 @@ def json_to_data(gid: str):
     out_path = Path("data/json/2_extract") / f"{gid}.json"
     used_path = Path("data/json/3_used_pre") / f"{gid}.json"
     
-    if(out_path.exists() and used_path.exists()):
-        in_txt = in_path.read_text(encoding="utf-8")
-        used_txt = used_path.read_text(encoding="utf-8")
+    # if(out_path.exists() and used_path.exists()):
+    #     in_txt = in_path.read_text(encoding="utf-8")
+    #     used_txt = used_path.read_text(encoding="utf-8")
         
-        print(f"gid {gid} 已有数据无需更新：{in_txt == used_txt}")    # 是否相等
-        if(in_txt == used_txt):
-            in_path.unlink()
-            return 1
-        else:
-            used_path.unlink()
+    #     print(f"gid {gid} 已有数据无需更新：{in_txt == used_txt}")    # 是否相等
+    #     if(in_txt == used_txt):
+    #         in_path.unlink()
+    #         return 1
+    #     else:
+    #         used_path.unlink()
+    if(used_path.exists()):
+        used_path.unlink()
     
     with open(in_path, "r", encoding="utf-8") as f:
         json_preprocess = f.read()
@@ -49,6 +51,7 @@ def json2list(gid: str) -> list:
         data = json.load(f)
 
     top_series = data.get("series")
+    fetched_at = data.get("fetched_at")
     top_source_url = data.get("source_url")
     records = data.get("records", [])
 
@@ -64,10 +67,11 @@ def json2list(gid: str) -> list:
             "location": record.get("location") or record.get("location_raw"),
             "source_url": record.get("source_url") or top_source_url,
             "gid": gid,
+            "fetched_at": fetched_at,
             "evidence_where": evidence.get("where"),
             "evidence_content": evidence.get("content"),
         }
-        print(item)
+        # print(item)
 
         result.append(item)
 

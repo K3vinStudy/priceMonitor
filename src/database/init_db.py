@@ -1,11 +1,10 @@
-from pathlib import Path
-
 import sys
 from pathlib import Path
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
-    
+
 from database.db import get_connection
 
 
@@ -15,6 +14,12 @@ SCHEMA_PATH = Path(__file__).with_name("price_total.sql")
 def _read_schema_sql() -> str:
     with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def _column_exists(cursor, table_name: str, column_name: str) -> bool:
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = cursor.fetchall()
+    return any(column[1] == column_name for column in columns)
 
 
 def init_db():
@@ -42,6 +47,16 @@ def init_db():
         if not db_file_exists or not table_exists:
             schema_sql = _read_schema_sql()
             cursor.executescript(schema_sql)
+        else:
+            if not _column_exists(cursor, "price_total", "gid"):
+                cursor.execute("ALTER TABLE price_total ADD COLUMN gid TEXT")
+
+            if not _column_exists(cursor, "price_total", "fetched_at"):
+                cursor.execute("ALTER TABLE price_total ADD COLUMN fetched_at TEXT")
+
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_price_total_gid ON price_total(gid)"
+            )
 
         conn.commit()
     except Exception:
@@ -49,6 +64,7 @@ def init_db():
         raise
     finally:
         conn.close()
-        
+
+
 if __name__ == "__main__":
     print(init_db())

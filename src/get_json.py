@@ -14,6 +14,7 @@ import config
 # PAGE_BASE_URL= "https://www.dongchedi.com/ugc/article/"
 
 
+# 页面渲染+数据清洗（gid -> html -> json）
 def gid2json(gid: str):
     print(gid)
 
@@ -22,17 +23,17 @@ def gid2json(gid: str):
 
     out_path = out_dir / f"{gid}.json"
     html_path = html_dir / f"{gid}.html"
-    print(f"目标路径存在？{out_path.exists()}")
-    print(f"目标是文件？{out_path.is_file()}")
+    # print(f"目标路径存在？{out_path.exists()}")
+    # print(f"目标是文件？{out_path.is_file()}")
     # if out_path.exists() and p.is_file():
     #     return 1
 
     url = f"{config._ENV_CACHE['PAGE_BASE_URL']}{gid}"
 
     html_pages = fetch_rendered_html(url)
-    html_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(html_pages[0])
+    # html_path.parent.mkdir(parents=True, exist_ok=True)
+    # with open(html_path, "w", encoding="utf-8") as f:
+    #     f.write(html_pages[0])
     
     json = html_list_to_json_str(html_pages)
     # json = html2json(gid, html_pages)

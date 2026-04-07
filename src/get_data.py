@@ -3,63 +3,111 @@
 # 输入：
 # 输出：
 
-from time import sleep
-from bs4 import BeautifulSoup as bs
 from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup as bs
+from time import sleep
+import time
+import random
 import re
+import logging
 
 from get_resp import get_json
 import config
 
-def get_gids(rounds = 1) -> list:
+def get_gids(rounds:int = 1) -> list:
     # rounds = 2      # 爬取轮数(每轮30条)
     base_url = config._ENV_CACHE["BASE_URL"]
-    
-    # headers = {
-    #     "User-Agent": "Mozilla/5.0"
-    # }
-    # resp = requests.get(url, timeout=10).json()
-    # print("status:", resp.status_code)
-    # print("headers:", resp.headers)
-    # print("text:", resp.text)        # 返回的原始文本内容
-    # print(resp["data"]["topic_list"][0]["gid"])
-    
+    logger = logging.getLogger(__name__)
+
     seen = set()
     url = config._ENV_CACHE["FIRST_URL"]
     count = 0
+
+    # 单页请求重试参数
+    max_retries = 3                  # 每一轮最多尝试 3 次
+    base_retry_delay = 2.5           # 首次重试前基础等待秒数
+    max_retry_delay = 20.0           # 单次重试等待上限
+
+    # 轮次之间节流参数：尽量模拟更自然的访问节奏
+    round_delay_min = 3.5
+    round_delay_max = 7.5
+
     while count < rounds:
-        json = get_json(url).json()
+        page_no = count + 1
+        success = False
+
+        for attempt in range(max_retries + 1):
+            try:
+                # 每次真正发请求前都加一点小抖动，降低固定节奏
+                pre_delay = random.uniform(0.6, 1.8) if attempt == 0 else random.uniform(1.2, 3.0)
+                sleep(pre_delay)
+
+                json_data = get_json(url).json()
+                success = True
+                break
+
+            except Exception as e:
+                is_last_attempt = attempt >= max_retries
+                if is_last_attempt:
+                    logger.exception(
+                        "get_gids 请求失败且已达到重试上限。page_no=%s, url=%s",
+                        page_no,
+                        url,
+                    )
+                    raise RuntimeError(
+                        f"get_gids 在第 {page_no} 轮请求失败，且重试 {max_retries} 次后仍未成功: {e}"
+                    ) from e
+
+                # 指数退避 + 随机抖动，减少被风控和瞬时网络抖动影响
+                retry_delay = min(max_retry_delay, base_retry_delay * (2 ** attempt))
+                retry_delay += random.uniform(0.8, 2.6)
+                print(
+                    f"get_gids 第 {page_no} 轮第 {attempt + 1} 次请求失败: {e}，"
+                    f"将在 {retry_delay:.1f} 秒后重试"
+                )
+                sleep(retry_delay)
+
+        if not success:
+            break
+
         count += 1
-        
-        topic_list = json["data"]["topic_list"]
-        has_more = json["data"]["has_more"]
-        last_gid = json["data"]["last_id_str"]
-        
+
+        topic_list = json_data["data"].get("topic_list", [])
+        has_more = json_data["data"].get("has_more", False)
+        last_gid = json_data["data"].get("last_id_str")
+
         for item in topic_list:
-            raw_gid = str(item.get("gid"))
+            raw_gid = item.get("gid")
             if raw_gid is None:
                 continue
-            
+
             gid = str(raw_gid)
             if gid in seen:
                 continue
-            
+
             seen.add(gid)
             print("Got gid: " + gid)
-            # gids.append(gid)
-        
-        url = base_url + last_gid
-        
+
         if not has_more:
             break
         if not topic_list:
             break
-        
-        sleep(2)
-        
-    # print(seen)
-    # save_html_with_gid(seen)
-    
+        if not last_gid:
+            logger.warning("get_gids 未拿到 last_id_str，提前结束。page_no=%s, url=%s", page_no, url)
+            break
+
+        url = base_url + str(last_gid)
+
+        if count >= rounds:
+            break
+
+        # 轮次之间增加更自然的随机延迟；连续请求越久，额外加一点缓冲
+        round_delay = random.uniform(round_delay_min, round_delay_max)
+        if count % 5 == 0:
+            round_delay += random.uniform(4.0, 8.0)
+        print(f"第 {page_no} 轮完成，等待 {round_delay:.1f} 秒后继续")
+        sleep(round_delay)
+
     return seen
 
 
@@ -211,4 +259,3 @@ def fetch_rendered_html(url: str, max_pages: int = 50) -> list[str]:
 if __name__ == "__main__":
     gids = get_gids
     print(gids)
-    

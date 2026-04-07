@@ -225,8 +225,8 @@ def extract_op_author(raw_html: str) -> str:
                 if cur is None:
                     break
 
-    # raw 页面里楼主名是“多放奶盖1”，你现在能抓到  [oai_citation:10‡1845775220762699.txt](sediment://file_00000000d23c7206af593e1b9d4d06f3)
-    # 更稳：从主贴容器附近找第一个 /user/ 链接的可见文本
+    # raw 页面里楼主名是“多放奶盖1”，现在能抓到  [oai_citation:10‡1845775220762699.txt](sediment://file_00000000d23c7206af593e1b9d4d06f3)
+    # 从主贴容器附近找第一个 /user/ 链接的可见文本
 
     # 3) Fallback: pick the first profile link that is NOT inside any comment/reply card.
     # This avoids grabbing commenters when OP extraction above fails.
@@ -384,7 +384,7 @@ def extract_comments_strict(
         if tok.startswith("前天"):
             return with_time(base_dt - timedelta(days=2))
 
-        # N天前
+        # n天前
         m_days = re.search(r"(\d+)天前", tok)
         if m_days:
             n = int(m_days.group(1))

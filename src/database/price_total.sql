@@ -6,6 +6,9 @@ CREATE TABLE IF NOT EXISTS price_total (
     location TEXT,
     source_url TEXT,
     gid TEXT,
+    fetched_at TEXT,
     evidence_where TEXT,
     evidence_content TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_price_total_gid ON price_total(gid);

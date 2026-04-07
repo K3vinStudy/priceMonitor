@@ -8,7 +8,10 @@ from dotenv import load_dotenv
 from dashscope import Generation, MultiModalConversation
 from openai import OpenAI
 from pathlib import Path
+
 from jinja2 import Environment, FileSystemLoader
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+import logging
 
 import dashscope
 
@@ -45,33 +48,62 @@ def call_qwen(api_key: str, system: str, user: str):
         {'role': 'system', 'content': system},
         {'role': 'user', 'content': user}
     ]
-    
-    print("访问API...")
-    try:
-        response = Generation.call(
+
+    timeout_seconds = 180
+    max_retries = 2  # 重试机会：2 次（总共最多 3 次尝试）
+    logger = logging.getLogger(__name__)
+
+    def _do_call():
+        return Generation.call(
             # 可选模型：qwen-max, qwen-plus, qwen-turbo, qwen-long 等
             model='qwen-plus-2025-07-28',
             messages=messages,
             result_format='message'
         )
-        
-        # 调用多模态模型需要特殊的函数
-        # response = MultiModalConversation.call(
-        #     model='qwen3.6-plus',
-        #     messages=messages,
-        #     result_format='message'
-        # )
 
-        if response.status_code == 200:
-            # print("回答:")
-            # print(response.output.choices[0].message.content)
-            return response.output.choices[0].message.content
-        else:
-            print(f"请求失败: {response.code}, 错误信息: {response.message}")
-    except Exception as e:
-        print(f"发生异常: {e}")
+    for attempt in range(max_retries + 1):
+        print(f"访问API... 第 {attempt + 1} 次尝试")
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(_do_call)
+        try:
+            response = future.result(timeout=timeout_seconds)
 
-    return 0
+            # 调用多模态模型需要特殊的函数
+            # response = MultiModalConversation.call(
+            #     model='qwen3.6-plus',
+            #     messages=messages,
+            #     result_format='message'
+            # )
+
+            if response.status_code == 200:
+                return response.output.choices[0].message.content
+            else:
+                raise RuntimeError(f"请求失败: {response.code}, 错误信息: {response.message}")
+
+        except FuturesTimeoutError as e:
+            future.cancel()
+            print(f"千问调用超时（>{timeout_seconds}秒）: 第 {attempt + 1} 次尝试失败")
+            if attempt < max_retries:
+                print("准备重试...")
+                continue
+            logger.exception(
+                "千问调用超时，已达到重试上限。timeout_seconds=%s, max_retries=%s",
+                timeout_seconds,
+                max_retries,
+                exc_info=e,
+            )
+            return "{}"
+
+        except Exception as e:
+            print(f"发生异常: 第 {attempt + 1} 次尝试失败, {e}")
+            if attempt < max_retries:
+                print("准备重试...")
+                continue
+            logger.exception("千问调用异常，已达到重试上限")
+            return "{}"
+
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
 
 # 功能：调用ChatGPT
@@ -195,7 +227,7 @@ def json2data(gid: str, thread_json: str) -> str:
 if __name__ == "__main__":
     config.get_env_cache()
     
-    gid = "1858457796005892"
+    gid = "1847314923770883"
     in_path = Path("data/json/1_preprocess") / f"{gid}.json"
     out_path = Path("data/json/2_extract") / f"{gid}.json"
     
