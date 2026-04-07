@@ -2,6 +2,8 @@ from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -11,12 +13,80 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSpinBox,
+    QToolButton,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 import config
 import main as app_main
+
+
+class UrlSettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("高级设置")
+        self.resize(560, 220)
+
+        self.base_url_input = QTextEdit()
+        self.first_url_input = QTextEdit()
+        self.page_base_url_input = QTextEdit()
+        self.base_url_input.setMinimumWidth(420)
+        self.first_url_input.setMinimumWidth(420)
+        self.page_base_url_input.setMinimumWidth(420)
+        self.base_url_input.setFixedHeight(56)
+        self.first_url_input.setFixedHeight(56)
+        self.page_base_url_input.setFixedHeight(56)
+
+        form_layout = QFormLayout()
+        form_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form_layout.setHorizontalSpacing(16)
+        form_layout.setVerticalSpacing(14)
+        form_layout.addRow("BASE_URL", self.base_url_input)
+        form_layout.addRow("FIRST_URL", self.first_url_input)
+        form_layout.addRow("PAGE_BASE_URL", self.page_base_url_input)
+
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addLayout(form_layout)
+        layout.addWidget(self.button_box)
+        self.setLayout(layout)
+
+        self.load_from_env()
+
+    def _read_env_file(self) -> dict:
+        config.ensure_env_file()
+        env_map = dict(config.DEFAULT_ENV)
+
+        if config.ENV_FILE.exists():
+            for line in config.ENV_FILE.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                key, value = stripped.split("=", 1)
+                env_map[key.strip()] = value.strip()
+
+        return env_map
+
+    def load_from_env(self):
+        env_map = self._read_env_file()
+        self.base_url_input.setPlainText(env_map.get("BASE_URL", ""))
+        self.first_url_input.setPlainText(env_map.get("FIRST_URL", ""))
+        self.page_base_url_input.setPlainText(env_map.get("PAGE_BASE_URL", ""))
+
+    def save_to_env(self):
+        env_map = self._read_env_file()
+        env_map["BASE_URL"] = self.base_url_input.toPlainText().strip()
+        env_map["FIRST_URL"] = self.first_url_input.toPlainText().strip()
+        env_map["PAGE_BASE_URL"] = self.page_base_url_input.toPlainText().strip()
+        config.write_env_file(env_map)
+        config.refresh_env_cache()
 
 
 class FetchThread(QThread):
@@ -102,6 +172,13 @@ class TaskPage(QWidget):
         self.api_key_input.setPlaceholderText("请输入 API Key")
 
         self.show_api_key_checkbox = QCheckBox("显示")
+        
+        self.advanced_settings_btn = QToolButton()
+        self.advanced_settings_btn.setText("⚙")
+        self.advanced_settings_btn.setToolTip("修改 BASE_URL / FIRST_URL / PAGE_BASE_URL")
+        self.advanced_settings_btn.setFixedSize(32, 32)
+        # self.advanced_settings_btn.setStyleSheet("font-size: 18px; font-weight: bold;")
+        self.advanced_settings_btn.setStyleSheet("font-size: 24px; font-weight: bold; padding: 0px; margin: 0px;")      # 更大的齿轮按钮
 
         self.start_btn = QPushButton("开始任务")
         self.apply_settings_btn = QPushButton("应用设置")
@@ -153,6 +230,12 @@ class TaskPage(QWidget):
         api_key_row.addWidget(self.api_key_input, 1)
         api_key_row.addWidget(self.show_api_key_checkbox)
 
+        api_key_layout = QVBoxLayout()
+        api_key_layout.setContentsMargins(0, 0, 0, 0)
+        api_key_layout.setSpacing(6)
+        api_key_layout.addWidget(QLabel("API_KEY"))
+        api_key_layout.addLayout(api_key_row)
+
         forms_layout = QHBoxLayout()
         forms_layout.setContentsMargins(0, 0, 0, 0)
         forms_layout.setSpacing(32)
@@ -162,11 +245,17 @@ class TaskPage(QWidget):
         config_layout = QVBoxLayout()
         config_layout.addLayout(forms_layout)
         config_layout.addSpacing(12)
-        config_layout.addLayout(api_key_row)
+        config_layout.addLayout(api_key_layout)
         config_group.setLayout(config_layout)
 
         control_group = QGroupBox("任务控制")
+        control_header_layout = QHBoxLayout()
+        control_header_layout.setContentsMargins(0, 0, 0, 0)
+        control_header_layout.addStretch()
+        control_header_layout.addWidget(self.advanced_settings_btn)
+
         control_layout = QVBoxLayout()
+        control_layout.addLayout(control_header_layout)
         control_layout.addStretch()
         control_layout.addWidget(self.apply_settings_btn)
         control_layout.addSpacing(18)
@@ -206,7 +295,15 @@ class TaskPage(QWidget):
         self.stop_btn.clicked.connect(self.stop_mock_task)
         self.show_api_key_checkbox.toggled.connect(self.toggle_api_key_visibility)
         self.llm_type_input.currentIndexChanged.connect(self.on_llm_type_changed)
+        self.advanced_settings_btn.clicked.connect(self.open_url_settings_dialog)
 
+    def open_url_settings_dialog(self):
+        dialog = UrlSettingsDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            dialog.save_to_env()
+            self.append_log("[CONFIG] 高级设置已应用")
+            self.status_label.setText("状态：高级设置已应用")
+    
     def on_llm_type_changed(self):
         previous_llm_type = self._current_llm_type
         current_text = self.api_key_input.text()
@@ -328,6 +425,7 @@ class TaskPage(QWidget):
             self.api_key_input,
             self.show_api_key_checkbox,
             self.apply_settings_btn,
+            self.advanced_settings_btn,
         ]
         for widget in widgets:
             widget.setEnabled(enabled)

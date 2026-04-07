@@ -10,7 +10,7 @@ from LLM import json2data
 
 import config
 
-def json_to_data(gid: str, should_stop=None):
+def json_to_data(gid: str, should_stop=None, log=None):
     if should_stop and should_stop():
         return None
 
@@ -30,7 +30,7 @@ def json_to_data(gid: str, should_stop=None):
     if should_stop and should_stop():
         return None
 
-    data_json = json2data(gid, json_preprocess, should_stop=should_stop)
+    data_json = json2data(gid, json_preprocess, should_stop=should_stop, log=log)
 
     if should_stop and should_stop():
         return None
@@ -86,13 +86,13 @@ def json2list(gid: str) -> list:
     return result
 
 
-def data2list(gid: str, should_stop=None) -> list:
+def data2list(gid: str, should_stop=None, log=None) -> list:
     config.get_env_cache()
 
     if should_stop and should_stop():
         return []
 
-    ret = json_to_data(gid, should_stop=should_stop)
+    ret = json_to_data(gid, should_stop=should_stop, log=log)
     if ret is None:
         return []
 

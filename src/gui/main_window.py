@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QPushButton,
     QSizePolicy,
@@ -45,14 +46,16 @@ class MainWindow(QMainWindow):
         nav_widget.setLayout(nav_layout)
         nav_widget.setFixedWidth(120)
 
-        body_layout = QHBoxLayout()
-        body_layout.addWidget(nav_widget)
-        body_layout.addWidget(self.stack, 1)
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(nav_widget)
+        content_layout.addWidget(self.stack, 1)
 
-        body_widget = QWidget()
-        body_widget.setLayout(body_layout)
+        content_widget = QWidget()
+        content_widget.setLayout(content_layout)
 
-        self.setCentralWidget(body_widget)
+        self.setCentralWidget(content_widget)
 
         self.switch_page(0)
 
