@@ -535,7 +535,6 @@ def extract_comments_strict(
         li_text = li.get_text(" ", strip=True)
         card_text = card.get_text(" ", strip=True)
         # Determine whether THIS card is a floor card or a reply card.
-        # IMPORTANT: li_text may include nested replies' "回复发表于"; do not use li_text for has_huifu.
         has_pinglun = ("评论发表于" in li_text) or ("评论发表于" in card_text)
         has_huifu_self = ("回复发表于" in card_text)
 
@@ -887,9 +886,6 @@ def html_list_to_json(html_pages: list[str], source_url: str = "", fetched_at: s
                 continue
             seen.add(k)
             merged_comments.append(floor)
-
-    # Do NOT re-sort by raw string tokens; each page is already time-sorted using fetched_at normalization.
-    # Keep the merged order (page1..N) stable to avoid breaking the corrected ordering.
 
     base["comments"] = merged_comments
 
