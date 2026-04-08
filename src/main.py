@@ -137,9 +137,7 @@ def fetch(rounds: int, log=None, progress=None, should_stop=None):
                     update_progress()
                     continue
 
-                _log(log, f"[FETCH] gid={gid} start")
                 gid2json(gid)
-                _log(log, f"[FETCH] gid={gid} done")
 
                 while True:
                     if should_stop and should_stop():
@@ -148,7 +146,6 @@ def fetch(rounds: int, log=None, progress=None, should_stop=None):
                         return
                     try:
                         gid_queue.put(gid, timeout=0.5)
-                        _log(log, f"[LLM] gid={gid} 已入队，当前待处理 gid 队列 {_safe_qsize(gid_queue)}")
                         break
                     except Exception:
                         continue
@@ -161,22 +158,15 @@ def fetch(rounds: int, log=None, progress=None, should_stop=None):
     def llm_worker(worker_id: int):
         while True:
             if should_stop and should_stop():
-                _log(log, f"[LLM-WORKER-{worker_id}] 收到停止信号，退出")
                 break
 
             gid = gid_queue.get()
             try:
                 if gid is llm_stop_token:
-                    _log(log, f"[LLM-WORKER-{worker_id}] 收到停止标记，退出")
                     break
 
-                _log(log, f"[LLM-WORKER-{worker_id}] 开始处理 gid={gid}")
-                records = run_data2list_with_retry(gid, 1, log, should_stop)
-                result_queue.put((gid, records))
-                if records:
-                    _log(log, f"[DB] 新增 {len(records)} 条，当前等待入库 {len(db_buffer) + len(records)} 条")
-                else:
-                    _log(log, f"[LLM-WORKER-{worker_id}] gid={gid} 返回空列表")
+                status, records = run_data2list_with_retry(gid, 1, log, should_stop)
+                result_queue.put((gid, status, records))
             finally:
                 gid_queue.task_done()
 
@@ -209,10 +199,22 @@ def fetch(rounds: int, log=None, progress=None, should_stop=None):
             if item is result_stop_token:
                 break
 
-            gid, records = item
+            gid, status, records = item
             done += 1
 
-            if not records:
+            if status == "failed":
+                failed += 1
+                _log(log, f"[LLM] gid={gid} 处理失败，跳过入库")
+                update_progress()
+                continue
+
+            if status == "stopped":
+                failed += 1
+                _log(log, f"[LLM] gid={gid} 因停止信号结束，跳过入库")
+                update_progress()
+                continue
+
+            if status == "empty":
                 success += 1
                 empty += 1
                 _log(log, f"[LLM] gid={gid} 正常返回空列表，跳过入库")
@@ -221,7 +223,7 @@ def fetch(rounds: int, log=None, progress=None, should_stop=None):
 
             success += 1
             db_buffer.extend(records)
-            # _log(log, f"[DB] 新增 {len(records)} 条，当前等待入库 {len(db_buffer)} 条")
+            _log(log, f"[DB] 新增 {len(records)} 条，当前等待入库 {len(db_buffer)} 条")
 
             if len(db_buffer) >= db_batch_size:
                 insert_price_records(db_buffer)

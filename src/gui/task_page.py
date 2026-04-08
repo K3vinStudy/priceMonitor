@@ -1,3 +1,5 @@
+from datetime import datetime
+from pathlib import Path
 from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -181,7 +183,7 @@ class TaskPage(QWidget):
         self.advanced_settings_btn.setStyleSheet("font-size: 24px; font-weight: bold; padding: 0px; margin: 0px;")      # 更大的齿轮按钮
 
         self.start_btn = QPushButton("开始任务")
-        self.apply_settings_btn = QPushButton("应用设置")
+        self.apply_settings_btn = QPushButton("保存并应用")
         self.stop_btn = QPushButton("停止任务")
         self.stop_btn.setEnabled(False)
 
@@ -204,6 +206,8 @@ class TaskPage(QWidget):
         self.show_api_key_checkbox.setChecked(False)
         self.load_settings_from_config()
         self.fetch_thread = None
+        self.log_dir = Path.cwd() / "log"
+        self.log_dir.mkdir(parents=True, exist_ok=True)
 
     def _build_ui(self):
         config_group = QGroupBox("任务参数")
@@ -526,3 +530,12 @@ class TaskPage(QWidget):
 
     def append_log(self, message: str):
         self.log_edit.appendPlainText(message)
+
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = self.log_dir / f"gui-{datetime.now().strftime('%Y-%m-%d')}.log"
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {message}\n")
+        except Exception:
+            pass

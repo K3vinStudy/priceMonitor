@@ -22,7 +22,8 @@ ALLOWED_QUERY_FIELDS = {
 RETRY_TIMES = 2
 RETRY_DELAY_SECONDS = 0.2
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+# ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path.cwd()
 LOG_DIR = ROOT_DIR / "log"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_PATH = LOG_DIR / "database.log"

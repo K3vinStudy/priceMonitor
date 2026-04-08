@@ -115,6 +115,8 @@ class ChartPage(QWidget):
         self.visible_units = 6.5
         self.edge_padding_units = 1.0
         self.mask_padding_units = 1.0
+        self.max_chart_records = 65535
+        self.chart_batch_size = 5000
 
         self.trend_animation_months = []
         self.trend_animation_min_values = []
@@ -332,40 +334,85 @@ class ChartPage(QWidget):
         try:
             sig = inspect.signature(list_price_records)
             params = sig.parameters
+            target_series = series_filter if series_filter and series_filter != "全部" else None
 
-            if series_filter and series_filter != "全部":
-                if "series" in params and "limit" in params:
-                    records = list_price_records(series=series_filter, limit=1000)
-                elif "series" in params:
-                    records = list_price_records(series=series_filter)
-                elif "limit" in params:
-                    records = list_price_records(limit=1000)
-                else:
-                    records = list_price_records()
+            supports_limit = "limit" in params
+            supports_offset = "offset" in params
+            supports_page = "page" in params
+            supports_series = "series" in params
+
+            if supports_limit and (supports_offset or supports_page):
+                all_records = []
+                fetched_total = 0
+                page_index = 1
+                offset_value = 0
+
+                while fetched_total < self.max_chart_records:
+                    current_limit = min(self.chart_batch_size, self.max_chart_records - fetched_total)
+                    kwargs = {"limit": current_limit}
+                    if supports_offset:
+                        kwargs["offset"] = offset_value
+                    elif supports_page:
+                        kwargs["page"] = page_index
+                    if supports_series and target_series:
+                        kwargs["series"] = target_series
+
+                    batch = list_price_records(**kwargs)
+
+                    if batch is None:
+                        break
+                    if isinstance(batch, Iterable) and not isinstance(batch, (str, bytes, dict)):
+                        batch_list = list(batch)
+                    else:
+                        batch_list = [batch]
+
+                    if not batch_list:
+                        break
+
+                    all_records.extend(batch_list)
+                    fetched_total += len(batch_list)
+
+                    if len(batch_list) < current_limit:
+                        break
+
+                    if supports_offset:
+                        offset_value += len(batch_list)
+                    elif supports_page:
+                        page_index += 1
+
+                normalized = all_records
             else:
-                if "limit" in params:
-                    records = list_price_records(limit=1000)
+                kwargs = {}
+                if supports_limit:
+                    kwargs["limit"] = self.max_chart_records
+                if supports_series and target_series:
+                    kwargs["series"] = target_series
+                records = list_price_records(**kwargs) if kwargs else list_price_records()
+
+                if records is None:
+                    normalized = []
+                elif isinstance(records, Iterable) and not isinstance(records, (str, bytes, dict)):
+                    normalized = list(records)
                 else:
-                    records = list_price_records()
+                    normalized = [records]
         except Exception:
             records = self._safe_call(list_price_records)
+            if records is None:
+                normalized = []
+            elif isinstance(records, Iterable) and not isinstance(records, (str, bytes, dict)):
+                normalized = list(records)
+            else:
+                normalized = [records]
 
-        if records is None:
-            normalized = []
-        elif isinstance(records, Iterable) and not isinstance(records, (str, bytes, dict)):
-            normalized = list(records)
-        else:
-            normalized = [records]
-
-        if series_filter and series_filter != "全部":
+        if target_series and not supports_series:
             filtered = []
             for row in normalized:
                 row_series = str(self._extract_value(row, ["series"], "")).strip()
-                if row_series == series_filter:
+                if row_series == target_series:
                     filtered.append(row)
-            return filtered
+            return filtered[: self.max_chart_records]
 
-        return normalized
+        return normalized[: self.max_chart_records]
 
     def _update_series_filter_options(self, records: list[Any]):
         series_values = []
@@ -391,6 +438,7 @@ class ChartPage(QWidget):
     def _refresh_view_from_selection(self):
         selected_series = self.series_filter_combo.currentText() or "全部"
         records = self._load_records(selected_series)
+        loaded_records = len(records)
 
         total_records = len(records)
         gid_count = self._get_gid_count(records)
@@ -420,10 +468,14 @@ class ChartPage(QWidget):
         else:
             self._draw_location_count_chart(records)
 
+        truncated_hint = ""
+        if loaded_records >= self.max_chart_records:
+            truncated_hint = f"（已达到图表加载上限 {self.max_chart_records} 条）"
+
         if selected_series == "全部":
-            self.status_label.setText(f"状态：已加载全部数据，共 {len(records)} 条")
+            self.status_label.setText(f"状态：已加载全部数据，共 {len(records)} 条{truncated_hint}")
         else:
-            self.status_label.setText(f"状态：已加载车系 {selected_series}，共 {len(records)} 条")
+            self.status_label.setText(f"状态：已加载车系 {selected_series}，共 {len(records)} 条{truncated_hint}")
 
     def _draw_location_count_chart(self, records: list[Any]):
         location_prices = defaultdict(list)

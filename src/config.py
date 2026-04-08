@@ -20,7 +20,7 @@ DEFAULT_ENV = {
     "PAGE_BASE_URL": "",
     "LLM_WORKERS": "15",
     "LLM_TIMEOUT_SECONDS": "600",
-    "DB_BATCH_SIZE": "50",
+    "DB_BATCH_SIZE": "1",
 }
 
 
