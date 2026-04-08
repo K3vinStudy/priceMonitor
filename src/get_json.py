@@ -18,7 +18,7 @@ import config
 def gid2json(gid: str):
     print(gid)
 
-    out_dir = Path("data/json/1_preprocess")
+    out_dir = Path("data/json/1_preprocessed")
     html_dir = Path("data/html")
 
     out_path = out_dir / f"{gid}.json"
@@ -52,11 +52,11 @@ def gid2json(gid: str):
 #     1) 拉取多页HTML（list[str]）
 #     2) 逐页调用 LLM(html2json) 抽取
 #     3) 调用 LLM(merge_json) 合并最终 JSON
-#     4) 保存到 data/json/1_preprocess/{gid}.json
+#     4) 保存到 data/json/1_preprocessed/{gid}.json
 #     """
 #     print(gid)
 
-#     out_dir = Path("data/json/1_preprocess")
+#     out_dir = Path("data/json/1_preprocessed")
 #     out_dir.mkdir(parents=True, exist_ok=True)
 
 #     out_path = out_dir / f"{gid}.json"

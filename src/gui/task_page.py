@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
-from PySide6.QtCore import QThread, Qt, Signal
+import time
+from PySide6.QtCore import QThread, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -206,6 +207,11 @@ class TaskPage(QWidget):
         self.show_api_key_checkbox.setChecked(False)
         self.load_settings_from_config()
         self.fetch_thread = None
+        self.task_started_at = None
+        self.current_stage = None
+        self.gid_status_timer = QTimer(self)
+        self.gid_status_timer.setInterval(1000)
+        self.gid_status_timer.timeout.connect(self.update_gid_eta_status)
         self.log_dir = Path.cwd() / "log"
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -306,7 +312,7 @@ class TaskPage(QWidget):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             dialog.save_to_env()
             self.append_log("[CONFIG] 高级设置已应用")
-            self.status_label.setText("状态：高级设置已应用")
+            self.set_status_message("状态：高级设置已应用")
     
     def on_llm_type_changed(self):
         previous_llm_type = self._current_llm_type
@@ -416,8 +422,81 @@ class TaskPage(QWidget):
         config.write_env_file(env_map)
         config.refresh_env_cache()
         self.append_log("[CONFIG] 设置已应用")
-        self.status_label.setText("状态：设置已应用")
+        self.set_status_message("状态：设置已应用")
+    def set_status_message(self, message: str, is_error: bool = False):
+        if is_error:
+            self.status_label.setStyleSheet("color: red;")
+        else:
+            self.status_label.setStyleSheet("")
+        self.status_label.setText(message)
 
+    def _format_seconds(self, seconds: float) -> str:
+        seconds = max(0, int(seconds))
+        minutes, secs = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours > 0:
+            return f"{hours}h {minutes}m {secs}s"
+        if minutes > 0:
+            return f"{minutes}m {secs}s"
+        return f"{secs}s"
+
+    def set_progress_error_state(self, is_error: bool = False):
+        if is_error:
+            self.progress_bar.setStyleSheet(
+                """
+                QProgressBar {
+                    border: 1px solid #b0b0b0;
+                    border-radius: 4px;
+                    text-align: center;
+                    background-color: #f3f3f3;
+                    color: black;
+                }
+                QProgressBar::chunk {
+                    background-color: #d9534f;
+                    border-radius: 3px;
+                }
+                """
+            )
+        else:
+            self.progress_bar.setStyleSheet(
+                """
+                QProgressBar {
+                    border: 1px solid #b0b0b0;
+                    border-radius: 4px;
+                    text-align: center;
+                    background-color: #f3f3f3;
+                    color: black;
+                }
+                QProgressBar::chunk {
+                    background-color: #4a90e2;
+                    border-radius: 3px;
+                }
+                """
+            )
+
+    def update_gid_eta_status(self):
+        if self.current_stage != "getting_gids":
+            return
+
+        elapsed = 0.0
+        if self.task_started_at is not None:
+            elapsed = time.monotonic() - self.task_started_at
+
+        total_rounds = self.rounds_input.value()
+        estimated_total_seconds = max(0, total_rounds * 8)
+        remaining_seconds = max(0, estimated_total_seconds - int(elapsed))
+
+        status_parts = ["状态：正在批量获取gid..."]
+        status_parts.append(f"已运行：{self._format_seconds(elapsed)}")
+        status_parts.append(f"预计剩余：{self._format_seconds(remaining_seconds)}")
+        status_parts.append(f"预计总时长：{self._format_seconds(estimated_total_seconds)}")
+        status_parts.append("实际耗时可能受网络质量影响")
+
+        self.set_status_message(" | ".join(status_parts))
+
+    def stop_gid_status_timer(self):
+        if self.gid_status_timer.isActive():
+            self.gid_status_timer.stop()
     def set_task_params_enabled(self, enabled: bool):
         widgets = [
             self.rounds_input,
@@ -434,14 +513,47 @@ class TaskPage(QWidget):
         for widget in widgets:
             widget.setEnabled(enabled)
 
+    def validate_required_settings(self) -> list[str]:
+        env_map = self._read_env_file()
+        missing_items = []
+
+        if not self.api_key_input.text().strip():
+            missing_items.append("API_KEY")
+
+        if not self.model_type_input.currentText().strip():
+            missing_items.append("MODEL_TYPE")
+
+        if not env_map.get("BASE_URL", "").strip():
+            missing_items.append("BASE_URL")
+
+        if not env_map.get("FIRST_URL", "").strip():
+            missing_items.append("FIRST_URL")
+
+        if not env_map.get("PAGE_BASE_URL", "").strip():
+            missing_items.append("PAGE_BASE_URL")
+
+        return missing_items
+
     def start_task(self):
         rounds = self.rounds_input.value()
         self.apply_settings()
+
+        missing_items = self.validate_required_settings()
+        if missing_items:
+            missing_text = "、".join(missing_items)
+            self.append_log(f"[CONFIG] 以下设置项未填写，任务未启动：{missing_text}")
+            self.set_status_message(f"状态：配置不完整（缺少：{missing_text}）", is_error=True)
+            return
+
+        self.task_started_at = time.monotonic()
+        self.current_stage = None
+        self.stop_gid_status_timer()
+        self.set_progress_error_state(False)
+        self.set_status_message("状态：准备启动...")
         self.set_task_params_enabled(False)
 
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
-        self.status_label.setText("状态：准备启动...")
         self.current_gid_label.setText("当前进度：0% | gid 总数：0")
         self.stats_label.setText("成功：0（空结果：0） | 失败：0")
         self.progress_bar.setRange(0, 100)
@@ -474,15 +586,23 @@ class TaskPage(QWidget):
         success = payload.get("success", 0)
         empty = payload.get("empty", 0)
         failed = payload.get("failed", 0)
-        current_gid = payload.get("current_gid")
 
-        if message:
-            self.status_label.setText(f"状态：{message}")
+        previous_stage = self.current_stage
+        self.current_stage = stage
+        self.set_progress_error_state(False)
 
         if stage == "getting_gids":
             self.progress_bar.setRange(0, 0)
             self.progress_bar.setFormat("正在批量获取 gid...")
+            self.update_gid_eta_status()
+            if not self.gid_status_timer.isActive():
+                self.gid_status_timer.start()
         else:
+            if previous_stage == "getting_gids":
+                self.stop_gid_status_timer()
+            if message:
+                self.set_status_message(f"状态：{message}")
+
             max_value = total if total > 0 else 1
             current_value = min(done, max_value)
             self.progress_bar.setRange(0, max_value)
@@ -500,12 +620,24 @@ class TaskPage(QWidget):
 
     def handle_error(self, message: str):
         self.append_log(f"[ERROR] {message}")
-        self.status_label.setText("状态：运行出错")
+        self.set_status_message("状态：运行出错", is_error=True)
+        self.stop_gid_status_timer()
+
+        if self.current_stage == "getting_gids":
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(0)
+            self.progress_bar.setFormat("0/100")
+        else:
+            self.set_progress_error_state(True)
 
     def on_task_finished(self):
         self.set_task_params_enabled(True)
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.task_started_at = None
+        self.current_stage = None
+        self.stop_gid_status_timer()
+        self.set_progress_error_state(False)
         self.progress_bar.setFormat("任务结束")
         total = self.progress_bar.maximum()
         if total > 0:
@@ -521,11 +653,17 @@ class TaskPage(QWidget):
         if self.fetch_thread is not None:
             self.fetch_thread.stop()
             self.append_log("[TASK] 已发送停止信号，等待当前任务安全结束")
-            self.status_label.setText("状态：正在停止...")
+            self.current_stage = None
+            self.stop_gid_status_timer()
+            self.set_progress_error_state(True)
+            self.set_status_message("状态：正在停止...")
         else:
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
-            self.status_label.setText("状态：已停止")
+            self.current_stage = None
+            self.stop_gid_status_timer()
+            self.set_progress_error_state(True)
+            self.set_status_message("状态：已停止")
             self.append_log("[TASK] 当前没有正在运行的任务")
 
     def append_log(self, message: str):

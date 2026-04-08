@@ -15,6 +15,10 @@ from database.op import (
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue, Empty
 import threading
+import multiprocessing as mp
+import logging
+import traceback
+import sys
 
 from extract_data import data2list
 from get_data import get_gids
@@ -39,6 +43,74 @@ def _safe_qsize(q):
         return q.qsize()
     except NotImplementedError:
         return -1
+
+
+class _QueuePrintWriter:
+    def __init__(self, log_queue, event_type: str = "print", prefix: str = ""):
+        self.log_queue = log_queue
+        self.event_type = event_type
+        self.prefix = prefix
+
+    def write(self, message):
+        if message is None:
+            return
+        text = str(message)
+        if not text:
+            return
+        for line in text.splitlines():
+            if line.strip():
+                self.log_queue.put((self.event_type, f"{self.prefix}{line}"))
+
+    def flush(self):
+        return
+
+
+class _QueueLogHandler(logging.Handler):
+    def __init__(self, log_queue):
+        super().__init__()
+        self.log_queue = log_queue
+
+    def emit(self, record):
+        try:
+            message = self.format(record)
+            self.log_queue.put(("log", message))
+        except Exception:
+            self.handleError(record)
+
+
+def _get_gids_process_worker(rounds: int, result_queue, log_queue):
+    queue_handler = _QueueLogHandler(log_queue)
+    queue_handler.setLevel(logging.INFO)
+    queue_handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s - %(message)s"
+    ))
+
+    root_logger = logging.getLogger()
+    original_level = root_logger.level
+    stdout_backup = sys.stdout
+    stderr_backup = sys.stderr
+    sys.stdout = _QueuePrintWriter(log_queue, event_type="print")
+    sys.stderr = _QueuePrintWriter(log_queue, event_type="print", prefix="[stderr] ")
+    root_logger.addHandler(queue_handler)
+    if root_logger.level > logging.INFO:
+        root_logger.setLevel(logging.INFO)
+
+    try:
+        log_queue.put(("log", "[TASK] get_gids 子进程已启动"))
+        gids = get_gids(rounds)
+        log_queue.put(("log", f"[TASK] get_gids 子进程执行完成，获取到 {len(gids)} 个 gid"))
+        result_queue.put(("success", gids))
+    except Exception as e:
+        tb = traceback.format_exc()
+        log_queue.put(("log", f"[TASK] get_gids 子进程异常: {e}"))
+        log_queue.put(("log", tb.rstrip()))
+        result_queue.put(("error", repr(e)))
+    finally:
+        sys.stdout = stdout_backup
+        sys.stderr = stderr_backup
+        root_logger.removeHandler(queue_handler)
+        root_logger.setLevel(original_level)
+
 
 def setup_app(log=None):
     config.get_env_cache()
@@ -81,7 +153,84 @@ def fetch(rounds: int, log=None, progress=None, should_stop=None):
     })
     _log(log, "[TASK] 正在批量获取gid...")
 
-    gids = get_gids(rounds)
+    ctx = mp.get_context("spawn")
+    gids_result_queue = ctx.Queue()
+    gids_log_queue = ctx.Queue()
+    gids_process = ctx.Process(
+        target=_get_gids_process_worker,
+        args=(rounds, gids_result_queue, gids_log_queue),
+        daemon=True,
+    )
+    gids_process.start()
+
+    while True:
+        while True:
+            try:
+                event_type, event_payload = gids_log_queue.get_nowait()
+                if event_type == "log":
+                    _log(log, event_payload)
+                elif event_type == "print":
+                    print(event_payload)
+            except Exception:
+                break
+
+        if should_stop and should_stop():
+            if gids_process.is_alive():
+                gids_process.terminate()
+                gids_process.join(timeout=1)
+            while True:
+                try:
+                    event_type, event_payload = gids_log_queue.get_nowait()
+                    if event_type == "log":
+                        _log(log, event_payload)
+                    elif event_type == "print":
+                        print(event_payload)
+                except Exception:
+                    break
+            _progress(progress, {
+                "stage": "finished",
+                "message": "任务已停止",
+                "total": 0,
+                "done": 0,
+                "success": 0,
+                "empty": 0,
+                "failed": 0,
+                "current_gid": None,
+            })
+            _log(log, "[TASK] 在获取 gid 阶段收到停止信号，已强制终止 get_gids")
+            return
+
+        try:
+            status, payload = gids_result_queue.get(timeout=0.2)
+            gids_process.join(timeout=1)
+            while True:
+                try:
+                    event_type, event_payload = gids_log_queue.get_nowait()
+                    if event_type == "log":
+                        _log(log, event_payload)
+                    elif event_type == "print":
+                        print(event_payload)
+                except Exception:
+                    break
+            if status == "success":
+                gids = payload
+                break
+            raise RuntimeError(f"get_gids 执行失败: {payload}")
+        except Empty:
+            if not gids_process.is_alive() and gids_result_queue.empty():
+                gids_process.join(timeout=1)
+                while True:
+                    try:
+                        event_type, event_payload = gids_log_queue.get_nowait()
+                        if event_type == "log":
+                            _log(log, event_payload)
+                        elif event_type == "print":
+                            print(event_payload)
+                    except Exception:
+                        break
+                raise RuntimeError("get_gids 子进程已退出，但未返回结果")
+            continue
+
     total = len(gids)
     done = 0
     success = 0

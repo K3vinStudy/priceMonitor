@@ -191,24 +191,40 @@ def get_price_record_by_ruid(ruid: str) -> dict[str, Any] | None:
     return _run_with_retry("get_price_record_by_ruid", _operation, None)
 
 
-def list_price_records(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+def list_price_records(
+    limit: int = 100,
+    offset: int = 0,
+    series: str | None = None,
+) -> list[dict[str, Any]]:
     limit = max(0, int(limit))
     offset = max(0, int(offset))
+
+    conditions = []
+    params = []
+
+    if series:
+        conditions.append("series = ?")
+        params.append(series)
+
+    where_clause = ""
+    if conditions:
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+    sql = f"""
+    SELECT *
+    FROM price_total
+    {where_clause}
+    ORDER BY date DESC, ruid DESC
+    LIMIT ? OFFSET ?
+    """
+    params.extend([limit, offset])
 
     def _operation() -> list[dict[str, Any]]:
         conn = get_connection()
         try:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT *
-                FROM price_total
-                ORDER BY date DESC, ruid DESC
-                LIMIT ? OFFSET ?
-                """,
-                (limit, offset),
-            )
+            cursor.execute(sql, params)
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         finally:
@@ -358,6 +374,47 @@ def count_price_records() -> int:
             conn.close()
 
     return _run_with_retry("count_price_records", _operation, 0)
+
+
+def count_distinct_gids() -> int:
+    def _operation() -> int:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(DISTINCT gid)
+                FROM price_total
+                WHERE gid IS NOT NULL AND gid != ''
+                """
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row is not None else 0
+        finally:
+            conn.close()
+
+    return _run_with_retry("count_distinct_gids", _operation, 0)
+
+
+def list_distinct_series() -> list[str]:
+    def _operation() -> list[str]:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT DISTINCT series
+                FROM price_total
+                WHERE series IS NOT NULL AND series != ''
+                ORDER BY series ASC
+                """
+            )
+            rows = cursor.fetchall()
+            return [str(row[0]) for row in rows if row and row[0] is not None]
+        finally:
+            conn.close()
+
+    return _run_with_retry("list_distinct_series", _operation, [])
 
 
 def count_price_records_by_gid(gid: str) -> int:

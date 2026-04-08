@@ -378,7 +378,7 @@ if __name__ == "__main__":
     config.refresh_env_cache()
     
     gid = "1855068947908617"
-    in_path = Path("data/json/1_preprocess") / f"{gid}.json"
+    in_path = Path("data/json/1_preprocessed") / f"{gid}.json"
     out_path = Path("data/json/2_extract") / f"{gid}.json"
     
     with open(in_path, "r", encoding="utf-8") as f:

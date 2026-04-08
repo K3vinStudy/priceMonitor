@@ -14,8 +14,8 @@ def json_to_data(gid: str, should_stop=None, log=None):
     if should_stop and should_stop():
         return None
 
-    in_path = Path("data/json/1_preprocess") / f"{gid}.json"
-    out_path = Path("data/json/2_extract") / f"{gid}.json"
+    in_path = Path("data/json/1_preprocessed") / f"{gid}.json"
+    out_path = Path("data/json/2_extracted") / f"{gid}.json"
     used_path = Path("data/json/3_used_pre") / f"{gid}.json"
 
     if used_path.exists():
@@ -53,7 +53,7 @@ def json_to_data(gid: str, should_stop=None, log=None):
 
 
 def json2list(gid: str) -> list:
-    json_path = Path("data/json/2_extract") / f"{gid}.json"
+    json_path = Path("data/json/2_extracted") / f"{gid}.json"
 
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)

@@ -6,7 +6,6 @@
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup as bs
 from time import sleep
-import time
 import random
 import re
 import logging
@@ -43,6 +42,8 @@ def get_gids(rounds:int = 1) -> list:
                 sleep(pre_delay)
 
                 json_data = get_json(url).json()
+                if not isinstance(json_data, dict):
+                    raise RuntimeError(f"get_gids 返回的 json_data 不是 dict: {type(json_data)}")
                 success = True
                 break
 
@@ -72,10 +73,11 @@ def get_gids(rounds:int = 1) -> list:
 
         count += 1
 
-        topic_list = json_data["data"].get("topic_list", [])
-        has_more = json_data["data"].get("has_more", False)
-        last_gid = json_data["data"].get("last_id_str")
+        data = json_data.get("data") or {}
+        topic_list = data.get("topic_list") or []
+        last_gid = data.get("last_id_str")
 
+        page_seen_before = len(seen)
         for item in topic_list:
             raw_gid = item.get("gid")
             if raw_gid is None:
@@ -87,13 +89,31 @@ def get_gids(rounds:int = 1) -> list:
 
             seen.add(gid)
             print("Got gid: " + gid)
+        new_gid_count = len(seen) - page_seen_before
 
-        if not has_more:
-            break
+        # Added block for new_gid_count calculation as per instructions
+        # (This block is intentionally after the main loop, as per step 2)
+        # Note: The above code already calculates new_gid_count, so step 2 is satisfied.
+
+        print(
+            f"[GID] page={page_no}, topic_count={len(topic_list)}, "
+            f"new_gid_count={new_gid_count}, last_gid={last_gid}"
+        )
+
+        # 不再依赖 has_more；目标站点尾页可能错误返回 has_more=True，但下一页实际为空页
         if not topic_list:
+            logger.info("get_gids 到达尾页：topic_list 为空（空页）。page_no=%s, url=%s", page_no, url)
+            break
+        if new_gid_count == 0:
+            logger.info("get_gids 到达尾页：本页没有新增 gid。page_no=%s, url=%s", page_no, url)
             break
         if not last_gid:
-            logger.warning("get_gids 未拿到 last_id_str，提前结束。page_no=%s, url=%s", page_no, url)
+            logger.warning(
+                "get_gids 未拿到 last_id_str，按尾页处理并结束。page_no=%s, url=%s, topic_count=%s",
+                page_no,
+                url,
+                len(topic_list),
+            )
             break
 
         url = base_url + str(last_gid)
@@ -257,5 +277,5 @@ def fetch_rendered_html(url: str, max_pages: int = 50) -> list[str]:
 
 
 if __name__ == "__main__":
-    gids = get_gids
+    gids = get_gids()
     print(gids)

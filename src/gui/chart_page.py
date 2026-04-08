@@ -26,7 +26,13 @@ from matplotlib import rcParams
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from database.op import count_price_records, count_price_records_by_gid, list_price_records
+from database.op import (
+    count_distinct_gids,
+    count_price_records,
+    count_price_records_by_gid,
+    list_distinct_series,
+    list_price_records,
+)
 
 
 rcParams["font.family"] = "sans-serif"
@@ -111,6 +117,7 @@ class ChartPage(QWidget):
 
         self.trend_canvas = AnimatedMplCanvas(wheel_callback=self._scroll_trend_chart)
         self.series_canvas = AnimatedMplCanvas(wheel_callback=self._scroll_series_chart)
+        self.secondary_chart_group = None
 
         self.visible_units = 6.5
         self.edge_padding_units = 1.0
@@ -234,15 +241,15 @@ class ChartPage(QWidget):
         trend_layout.addWidget(self.trend_canvas)
         trend_group.setLayout(trend_layout)
 
-        series_group = QGroupBox("车系记录分布图")
+        self.secondary_chart_group = QGroupBox("车系记录分布图")
         series_layout = QVBoxLayout()
         series_layout.setContentsMargins(8, 8, 8, 18)
         series_layout.addWidget(self.series_canvas)
-        series_group.setLayout(series_layout)
+        self.secondary_chart_group.setLayout(series_layout)
 
         charts_layout = QVBoxLayout()
         charts_layout.addWidget(trend_group, 1)
-        charts_layout.addWidget(series_group, 1)
+        charts_layout.addWidget(self.secondary_chart_group, 1)
 
         charts_group = QGroupBox("图表区域")
         charts_group.setLayout(charts_layout)
@@ -331,6 +338,7 @@ class ChartPage(QWidget):
         return text if text else "其他"
 
     def _load_records(self, series_filter: str | None = None) -> list[Any]:
+        supports_series = False
         try:
             sig = inspect.signature(list_price_records)
             params = sig.parameters
@@ -415,13 +423,16 @@ class ChartPage(QWidget):
         return normalized[: self.max_chart_records]
 
     def _update_series_filter_options(self, records: list[Any]):
-        series_values = []
-        for row in records:
-            series = str(self._extract_value(row, ["series"], "")).strip()
-            if series:
-                series_values.append(series)
+        try:
+            unique_series = list_distinct_series()
+        except Exception:
+            series_values = []
+            for row in records:
+                series = str(self._extract_value(row, ["series"], "")).strip()
+                if series:
+                    series_values.append(series)
+            unique_series = sorted(set(series_values))
 
-        unique_series = sorted(set(series_values))
         self.available_series = unique_series
 
         current_text = self.series_filter_combo.currentText() or "全部"
@@ -441,7 +452,13 @@ class ChartPage(QWidget):
         loaded_records = len(records)
 
         total_records = len(records)
-        gid_count = self._get_gid_count(records)
+        if selected_series == "全部":
+            try:
+                gid_count = count_distinct_gids()
+            except Exception:
+                gid_count = self._get_gid_count(records)
+        else:
+            gid_count = self._get_gid_count(records)
         latest_date = self._get_latest_date(records)
 
         price_values = []
@@ -464,8 +481,12 @@ class ChartPage(QWidget):
         self._draw_month_range_chart(records)
 
         if selected_series == "全部":
+            if self.secondary_chart_group is not None:
+                self.secondary_chart_group.setTitle("车系记录分布图")
             self._draw_series_count_chart(self.all_records_cache)
         else:
+            if self.secondary_chart_group is not None:
+                self.secondary_chart_group.setTitle("地域均价分布图")
             self._draw_location_count_chart(records)
 
         truncated_hint = ""
@@ -699,9 +720,9 @@ class ChartPage(QWidget):
         plot_right = visible_right + self.mask_padding_units
         ax.set_xlim(plot_left, plot_right)
 
-        ax.plot(x_values, visible_min, marker="o", linewidth=1.8)
-        ax.plot(x_values, visible_max, marker="o", linewidth=1.8)
-        ax.fill_between(x_values, visible_min, visible_max, alpha=0.22)
+        ax.plot(x_values, visible_min, marker="o", linewidth=1.8, color="blue")
+        ax.plot(x_values, visible_max, marker="o", linewidth=1.8, color="gold")
+        ax.fill_between(x_values, visible_min, visible_max, alpha=0.22, color="gold")
         ax.set_title("月度最高/最低价格区间")
         ax.set_xlabel("月份")
         ax.set_ylabel("价格（元）")
@@ -852,6 +873,9 @@ class ChartPage(QWidget):
             self.series_animation_values,
             self.series_window_start,
         )
+        self.series_canvas.axes.set_title("车系记录数量分布")
+        self.series_canvas.axes.set_ylabel("记录数")
+        self.series_canvas.draw_idle()
 
     def load_real_data(self):
         self.status_label.setText("状态：正在从数据库加载数据")
