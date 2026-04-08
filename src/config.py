@@ -15,9 +15,9 @@ DEFAULT_ENV = {
     "GPT_API_KEY": "",
     "DATA_DIR": "data",
     # "FETCH_ROUND": "1",
-    "BASE_URL": "",
-    "FIRST_URL": "",
-    "PAGE_BASE_URL": "",
+    "BASE_URL": "https://www.dongchedi.com/motor/pc/ugc/community/topic_list?aid=1839&app_name=auto_web_pc&topic_id=92642&type=all&limit=30&sort_type=2&last_id=",
+    "FIRST_URL": "https://www.dongchedi.com/motor/pc/ugc/community/topic_list?aid=1839&app_name=auto_web_pc&topic_id=92642&type=all&limit=30&sort_type=2",
+    "PAGE_BASE_URL": "https://www.dongchedi.com/ugc/article/",
     "LLM_WORKERS": "15",
     "LLM_TIMEOUT_SECONDS": "600",
     "DB_BATCH_SIZE": "1",
@@ -54,7 +54,7 @@ def load_api_key(LLM):
             raise Exception("Unsupported LLM. Please check LLM.py.")
         
     if not api_key:
-        print("警告：未找到 API KEY，请检查 /.env 文件")
+        print("警告：未找到API KEY")
         # 需要在工作目录建立.env文件，并输入    MY_API_KEY=xxxxxxxxxxxxxxxx
     else:
         print("成功读取到 API KEY")
