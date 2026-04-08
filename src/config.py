@@ -18,7 +18,7 @@ DEFAULT_ENV = {
     "BASE_URL": "https://www.dongchedi.com/motor/pc/ugc/community/topic_list?aid=1839&app_name=auto_web_pc&topic_id=92642&type=all&limit=30&sort_type=2&last_id=",
     "FIRST_URL": "https://www.dongchedi.com/motor/pc/ugc/community/topic_list?aid=1839&app_name=auto_web_pc&topic_id=92642&type=all&limit=30&sort_type=2",
     "PAGE_BASE_URL": "https://www.dongchedi.com/ugc/article/",
-    "LLM_WORKERS": "15",
+    "LLM_WORKERS": "8",
     "LLM_TIMEOUT_SECONDS": "600",
     "DB_BATCH_SIZE": "1",
 }

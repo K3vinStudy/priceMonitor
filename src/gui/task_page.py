@@ -146,10 +146,6 @@ class TaskPage(QWidget):
         self.llm_workers_input.setMaximum(128)
         self.llm_workers_input.setValue(8)
 
-        self.timeout_input = QSpinBox()
-        self.timeout_input.setMinimum(1)
-        self.timeout_input.setMaximum(999999)
-        self.timeout_input.setValue(600)
 
         self.db_batch_size_input = QSpinBox()
         self.db_batch_size_input.setMinimum(1)
@@ -225,14 +221,13 @@ class TaskPage(QWidget):
         left_form.setVerticalSpacing(12)
         left_form.addRow("rounds", self.rounds_input)
         left_form.addRow("LLM_WORKERS", self.llm_workers_input)
-        left_form.addRow("LLM_TIMEOUT_SECONDS", self.timeout_input)
+        left_form.addRow("DB_BATCH_SIZE", self.db_batch_size_input)
 
         right_form = QFormLayout()
         right_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
         right_form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
         right_form.setHorizontalSpacing(16)
         right_form.setVerticalSpacing(12)
-        right_form.addRow("DB_BATCH_SIZE", self.db_batch_size_input)
         right_form.addRow("LLM_TYPE", self.llm_type_input)
         right_form.addRow("MODEL_TYPE", self.model_type_input)
 
@@ -381,7 +376,6 @@ class TaskPage(QWidget):
 
         llm_type = int(env_map.get("LLM", "1"))
         self.llm_workers_input.setValue(int(env_map.get("LLM_WORKERS", "8")))
-        self.timeout_input.setValue(int(env_map.get("LLM_TIMEOUT_SECONDS", "600")))
         self.db_batch_size_input.setValue(int(env_map.get("DB_BATCH_SIZE", "50")))
 
         self.qwen_api_key = env_map.get("Qwen_API_KEY", "")
@@ -416,7 +410,6 @@ class TaskPage(QWidget):
         env_map["QWEN_MODEL"] = self.qwen_model_name
         env_map["GPT_MODEL"] = self.gpt_model_name
         env_map["LLM_WORKERS"] = str(self.llm_workers_input.value())
-        env_map["LLM_TIMEOUT_SECONDS"] = str(self.timeout_input.value())
         env_map["DB_BATCH_SIZE"] = str(self.db_batch_size_input.value())
 
         config.write_env_file(env_map)
@@ -501,7 +494,6 @@ class TaskPage(QWidget):
         widgets = [
             self.rounds_input,
             self.llm_workers_input,
-            self.timeout_input,
             self.db_batch_size_input,
             self.llm_type_input,
             self.model_type_input,
